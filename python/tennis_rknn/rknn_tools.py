@@ -141,10 +141,9 @@ class RKNN2(Operator):
 
         from rknn.api import RKNN
         self.__rknn_handle = RKNN(verbose=False)
-        self.__rknn_handle.config(channel_mean_value=None,
-                                  reorder_channel=None,
-                                  batch_size=1,
-                                  quantized_dtype=None) # not set quantized_dtype
+        self.__rknn_handle.config(mean_values=None,
+                                  std_values=None,
+                                  ) # not set quantized_dtype
         ret = self.__rknn_handle.load_rknn(path=self.__rknn_file)
         if ret != 0:
             raise Exception("RKNN failed with ret={}".format(ret))
@@ -377,7 +376,9 @@ def test_tsm_with_rknn(tsm,
                     calibrator.image_filter = calibrator_filter
                 else:
                     logger.warning("image_filter should be set if given dataset path only.")
+        logger.info("Loading tsm...")
         exporter.load(module=tsm, input_shape=input_shape)
+        logger.info("Exporting tsm with rknn...")
         exporter.export_tsm_with_rknn(tsm_with_rknn, calibrator)
         if calibrator_filter is not None:
             calibrator_filter.dispose()

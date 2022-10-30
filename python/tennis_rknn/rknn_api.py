@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from rknn.api import RKNN
+
 import cv2
 import numpy as np
 import time
@@ -41,10 +42,27 @@ class RKNNMaster(object):
                  verbose=False):
         # type: (Union[str, List[str]], str, str, bool, str, str, bool, str, bool, Optional[str], Union[str, List[int]], Union[str, List[int]], bool) -> None
 
+        if pre_compile:
+            print('[INFO]', 'ignore parameter pre_compile=True')
+
         if isinstance(channel_mean_value, (list, tuple)):
             channel_mean_value = ' '.join([str(i) for i in channel_mean_value])
         if isinstance(reorder_channel, (list, tuple)):
             reorder_channel = ' '.join([str(i) for i in reorder_channel])
+
+        mean_values = None
+        std_values = None
+        if isinstance(channel_mean_value, str):
+            values = [float(v) for v in channel_mean_value.split(' ')]
+            mean_values = [values[:3]]
+            std_values = [values[-1:] * 3]
+            print("[{}] Using: mean_values=\"{}\", std_values=\"{}\"".format(timestr(), mean_values, std_values))
+
+        quant_img_RGB2BGR = None
+        if isinstance(reorder_channel, str):
+            assert reorder_channel in {"0 1 2", "2 1 0"}
+            if reorder_channel == "2 1 0":
+                quant_img_RGB2BGR = True
 
         self.__target = target
         self.__device_id = device_id
@@ -57,7 +75,10 @@ class RKNNMaster(object):
         if not os.path.isdir(buffer_root):
             os.makedirs(buffer_root)
 
-        allowed_quantized_dtype = {"asymmetric_quantized-u8", 'dynamic_fixed_point-8', 'dynamic_fixed_point-16'}
+        allowed_quantized_dtype = {
+            "asymmetric_quantized-u8", 'dynamic_fixed_point-8', 'dynamic_fixed_point-16',
+            "asymmetric_quantized-8", "asymmetric_quantized-16", 
+        }
         assert quantized_dtype is None or quantized_dtype in allowed_quantized_dtype, \
             "quantized_dtype can be None or in {}".format(allowed_quantized_dtype)
 
@@ -76,12 +97,12 @@ class RKNNMaster(object):
 
         batch_size = 1
         print('[{}] --> config model: channel_mean_value=\"{}\", reorder_channel=\"{}\"'.format(timestr(), channel_mean_value, reorder_channel))
-        self.__rknn.config(channel_mean_value=channel_mean_value,
-                           reorder_channel=reorder_channel,
-                           batch_size=batch_size,
+        self.__rknn.config(mean_values=mean_values,
+                           std_values=std_values,
+                           quant_img_RGB2BGR=quant_img_RGB2BGR,
                            quantized_dtype=quantized_dtype,
-                           optimization_level=3,
-                           target_platform=None if target is None else [target])
+                           optimization_level=0,
+                           target_platform=None if target is None else target)
 
         if isinstance(original_model, str):
             original_model = [original_model]
@@ -93,8 +114,8 @@ class RKNNMaster(object):
         fixed_reorder_channel = "[]" if reorder_channel is None else reorder_channel.replace(" ", "_")
         model_mark = os.path.split(original_model[0])[-1]
         model_mark = os.path.splitext(model_mark)[1]
-        option_mark = "{}.{}.{}.{}.{}".format(
-            "precompile" if pre_compile else "no-compile",
+        option_mark = "{}.{}.{}.{}".format(
+            # "precompile" if pre_compile else "no-compile",
             "do-quantization" if do_quantization else "no-quantization",
             quantized_dtype if do_quantization else "float16",
             fixed_channel_mean_value,
@@ -145,7 +166,7 @@ class RKNNMaster(object):
 
         # Build model
         print('[{}] --> Building model'.format(timestr(), ))
-        ret = self.__rknn.build(do_quantization=do_quantization, dataset=dataset, pre_compile=pre_compile)
+        ret = self.__rknn.build(do_quantization=do_quantization, dataset=dataset)
         if ret != 0:
             print('[{}] Build {} failed!'.format(timestr(), model_type))
             exit(ret)

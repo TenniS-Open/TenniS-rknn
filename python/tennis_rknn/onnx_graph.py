@@ -1039,7 +1039,7 @@ def convert(outputs, inputs, onnx_output, version=None, rename=True):
     inferred_model = onnx.shape_inference.infer_shapes(original_model)
     onnx.checker.check_model(inferred_model)
     final_model = inferred_model
-    final_model = onnx.optimizer.optimize(final_model, get_tensor_stack_passes())
+    # final_model = onnx.optimizer.optimize(final_model, get_tensor_stack_passes())
     if rename:
         final_model = tb.onnx.converter.unique_names(final_model)
     onnx.save(final_model, onnx_output)

@@ -214,6 +214,8 @@ class RKNNConfig(object):
         self.__rknn_file = rknn_file
         self.__verbose = False
 
+    asymmetric_quantized_8 = "asymmetric_quantized-8"
+    asymmetric_quantized_16 = "asymmetric_quantized-16"
     asymmetric_quantized_u8 = "asymmetric_quantized-u8"
     dynamic_fixed_point_8 = "dynamic_fixed_point-8"
     dynamic_fixed_point_16 = "dynamic_fixed_point-16"
@@ -244,7 +246,10 @@ class RKNNConfig(object):
 
     @quantized_dtype.setter
     def quantized_dtype(self, val):
-        allowed_quantized_dtype = {"asymmetric_quantized-u8", 'dynamic_fixed_point-8', 'dynamic_fixed_point-16'}
+        allowed_quantized_dtype = {
+            "asymmetric_quantized-u8", 'dynamic_fixed_point-8', 'dynamic_fixed_point-16',
+            "asymmetric_quantized-8", "asymmetric_quantized-16", 
+        }
         assert val in allowed_quantized_dtype
         self.__quantized_dtype = val
 
@@ -286,7 +291,7 @@ class RKNNConfig(object):
 
     @target.setter
     def target(self, val):
-        assert val is None or val in {"rk3399pro", "rk1808"}
+        assert val is None or val in {"rk3588"}
         self.__target = val
 
     @property
