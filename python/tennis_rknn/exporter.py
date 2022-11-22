@@ -758,14 +758,14 @@ class RKNNExporter(object):
                                          verbose=cfg.verbose)
 
                 # accuracy_analysis
-                if False and cfg.do_quantization:
+                if False and cfg.do_quantization and cfg.device_id:
                     analysis_output_dir = os.path.join(os.path.split(cfg.rknn_file)[0], 'snapshot')
                     if not os.path.isdir(analysis_output_dir):
                         os.makedirs(analysis_output_dir)
                     master.accuracy_analysis(cfg.dataset, analysis_output_dir, cfg.device_id)
 
                 # known outputs names
-                if False and cfg.inputs and cfg.outputs and calibrator:
+                if False and cfg.inputs and cfg.outputs and calibrator and cfg.device_id:
                     calibrator.reset()
                     extractor = dumper.Dumper(self.__original_module, cfg.inputs + cfg.outputs, calibrator, 1, cache=self.__cache, device=self.__host_device, device_id=self.__host_device_id)
                     features = extractor.next() # test one single input
@@ -773,8 +773,8 @@ class RKNNExporter(object):
                     outputs = features[len(cfg.inputs):]
                     # tranpose input from NCHW to NHWC, as it's api feature
                     output_values = master.inference_pass_through(inputs)
-                    print(output_values)
-                    exit(996)
+                    # print(output_values)
+                    # exit(996)
                 
                 master.release()
             except Exception as _:

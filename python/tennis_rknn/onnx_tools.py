@@ -213,6 +213,8 @@ def test_tsm_with_onnx(tsm,
         avg, max = diff(a, b)
         detail = list(numpy.asarray(detail).reshape([-1]))
         cos = compare(a.reshape([-1]), b.reshape([-1]))
+        if len(detail) > 16:
+            detail = detail[:16] + ['...']
         logger.info("Output: avg={}, max={}, cos={}, detail={}".format(avg, max, cos, detail))
 
     if need_dispose_filter:
