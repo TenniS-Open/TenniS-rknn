@@ -139,21 +139,25 @@ class RKNN2(Operator):
             self.__output_shapes.append(list(output_shapes[offset:offset + size]))
             offset += size
 
+        target = register_device["target"] if "target" in register_device else None
+        device_id = register_device["device_id"] if "device_id" in register_device else None
+
         from rknn.api import RKNN
         self.__rknn_handle = RKNN(verbose=False)
         self.__rknn_handle.config(mean_values=None,
                                   std_values=None,
+                                  target_platform=target
                                   ) # not set quantized_dtype
         ret = self.__rknn_handle.load_rknn(path=self.__rknn_file)
         if ret != 0:
             raise Exception("RKNN failed with ret={}".format(ret))
 
-        target = register_device["target"] if "target" in register_device else None
-        device_id = register_device["device_id"] if "device_id" in register_device else None
         if target is not None and device_id is not None:
+            print("[I] RKNN init runtime {} {}".format(target, device_id))
             ret = self.__rknn_handle.init_runtime(target=target, device_id=device_id)
         else:
-            ret = self.__rknn_handle.init_runtime()
+            print("[I] RKNN init runtime {}".format('simulator'))
+            ret = self.__rknn_handle.init_runtime(target=target)
         # ret = self.__rknn_handle.init_runtime(target="rk3399pro", device_id="FB0GBDHQKS")
         # ret = self.__rknn_handle.init_runtime()
         # print(self.__rknn_handle.list_devices())
@@ -302,6 +306,11 @@ class SampleCalibrator(Calibrator):
 
             return [data, ]
 
+    def reset(self):
+        n = self.__next_index
+        self.__next_index = 0
+        return n
+
 
 class SampleImageFilter(object):
     def __init__(self, image_filter, device=None):
@@ -388,6 +397,10 @@ def test_tsm_with_rknn(tsm,
 
     logger.info("Extract original module...")
     feature1 = _export_feature(tsm, device, image, image_filter)
+
+    if config.device_id is None:
+        logger.error("Test rknn inference not work on simulator for target: {}".format(config.target))
+        return
 
     logger.info("Extract with rknn module...")
     feature2 = _export_feature(tsm_with_rknn, device, image, image_filter)

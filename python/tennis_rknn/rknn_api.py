@@ -93,7 +93,7 @@ class RKNNMaster(object):
         else:
             # self.__rknn = RKNN(target=target, device_id=device_id)
             self.__rknn = RKNN(**kwargs)
-        print("[{}] Init with: target=\"{}\", device_id=\"{}\"".format(timestr(), target, device_id))
+        print("[{}] Init with: target={}, device_id={}".format(timestr(), target, device_id))
 
         batch_size = 1
         print('[{}] --> config model: channel_mean_value=\"{}\", reorder_channel=\"{}\"'.format(timestr(), channel_mean_value, reorder_channel))
@@ -208,26 +208,44 @@ class RKNNMaster(object):
 
         return output
 
-    def accuracy_analysis(self, images, output_dir):
+    def inference_pass_through(self, inputs):
+        """
+        :param inputs List[numpy.ndarray]
+        """
+        outputs = self.__rknn.inference(inputs=inputs)
+        output = outputs
+
+        return output
+
+
+    def accuracy_analysis(self, images, output_dir, device_id=None):
         """
         :param images str or list of str
         :param output_dir output dir
         """
 
-        tmp_root = "/tmp/rknn/"
-        tmp_file = tmp_root + "tmp_accuracy_analysis_dataset.txt"
-        if not os.path.isdir(tmp_root):
-            os.makedirs(tmp_root)
-        if isinstance(images, str):
-            images = [images]
-        assert isinstance(images, (tuple, list))
-        with open(tmp_file, "w") as f:
-            for image in images:
-                f.write(image)
-                f.write(" ")
-            f.write("\n")
+        # tmp_root = "/tmp/rknn/"
+        # tmp_file = tmp_root + "tmp_accuracy_analysis_dataset.txt"
+        # if not os.path.isdir(tmp_root):
+        #     os.makedirs(tmp_root)
+        # if isinstance(images, str):
+        #     images = [images]
+        # assert isinstance(images, (tuple, list))
+        # with open(tmp_file, "w") as f:
+        #     for image in images:
+        #         f.write(image)
+        #         f.write(" ")
+        #     f.write("\n")
 
-        ret = self.__rknn.accuracy_analysis(inputs=tmp_file, output_dir=output_dir, calc_qnt_error=True)
+        if isinstance(images, str) and os.path.isfile(images):
+            root = os.path.split(images)[0]
+            with open(images, 'r') as f:
+                files = f.readlines()
+                files = [s.strip() for s in files]
+                files = [os.path.join(root, s) for s in files]
+                images = files
+
+        ret = self.__rknn.accuracy_analysis(inputs=images, output_dir=output_dir, device_id=device_id)
         if ret != 0:
             print('[{}] Accuracy analysis failed. ret={}.'.format(timestr(), ret))
 

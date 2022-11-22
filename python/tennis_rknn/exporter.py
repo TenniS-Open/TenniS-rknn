@@ -184,6 +184,14 @@ class Calibrator(object):
         """
         raise NotImplementedError
 
+    def reset():
+        # type: () -> int
+        """
+        Reset simple, return non-zero (sample number) to succeed
+        :return:
+        """
+        return 0
+
 
 class NetInferer(object):
     def run(self, inputs, outputs):
@@ -214,6 +222,9 @@ class RKNNConfig(object):
         self.__rknn_file = rknn_file
         self.__verbose = False
 
+        self.__inputs = []  # input names of origin module
+        self.__outputs = []  # input names of origin module
+
     asymmetric_quantized_8 = "asymmetric_quantized-8"
     asymmetric_quantized_16 = "asymmetric_quantized-16"
     asymmetric_quantized_u8 = "asymmetric_quantized-u8"
@@ -222,6 +233,7 @@ class RKNNConfig(object):
 
     rk3399pro = "rk3399pro"
     rk1808 = "rk1808"
+    rk3588 = "rk3588"
 
     def tag(self):
         tags = list()
@@ -363,6 +375,22 @@ class RKNNConfig(object):
     def verbose(self, val):
         assert isinstance(val, bool)
         self.__verbose = val
+
+    @property
+    def inputs(self):
+        return self.__inputs
+
+    @inputs.setter
+    def inputs(self, val):
+        self.__inputs = [str(s) for s in val]
+
+    @property
+    def outputs(self):
+        return self.__outputs
+
+    @outputs.setter
+    def outputs(self, val):
+        self.__outputs = [str(s) for s in val]
 
 
 def _check_input_shape_dict_str_int_list(shape):
@@ -583,6 +611,7 @@ class RKNNExporter(object):
             for i in range(sub_graph_count):
                 sub_graph = main_graph.sub_graph(i)
                 output_names.append([node.name for node in sub_graph.inputs])
+                print("[INFO]: Dumping {} -> {}".format([node.name for node in sub_graph.inputs], [node.name for node in sub_graph.outputs]))
             dataset_list = export_image_list(module=self.__original_module,
                               output_names=output_names,
                               calibrator=calibrator,
@@ -621,6 +650,9 @@ class RKNNExporter(object):
             cfg = copy.copy(self.__config)
             cfg.onnx_file = os.path.join(output_root, onnx_filename)
             cfg.rknn_file = os.path.join(output_root, rknn_filename)
+
+            cfg.inputs = [node.name for node in graph.inputs]
+            cfg.outputs = [node.name for node in graph.outputs]
 
             # set not change channels means
             assert len(graph.inputs) == 1, "Only support single input for now"
@@ -724,6 +756,26 @@ class RKNNExporter(object):
                                          channel_mean_value=cfg.channel_mean_value,
                                          reorder_channel=cfg.reorder_channel,
                                          verbose=cfg.verbose)
+
+                # accuracy_analysis
+                if False and cfg.do_quantization:
+                    analysis_output_dir = os.path.join(os.path.split(cfg.rknn_file)[0], 'snapshot')
+                    if not os.path.isdir(analysis_output_dir):
+                        os.makedirs(analysis_output_dir)
+                    master.accuracy_analysis(cfg.dataset, analysis_output_dir, cfg.device_id)
+
+                # known outputs names
+                if False and cfg.inputs and cfg.outputs and calibrator:
+                    calibrator.reset()
+                    extractor = dumper.Dumper(self.__original_module, cfg.inputs + cfg.outputs, calibrator, 1, cache=self.__cache, device=self.__host_device, device_id=self.__host_device_id)
+                    features = extractor.next() # test one single input
+                    inputs = features[:len(cfg.inputs)]
+                    outputs = features[len(cfg.inputs):]
+                    # tranpose input from NCHW to NHWC, as it's api feature
+                    output_values = master.inference_pass_through(inputs)
+                    print(output_values)
+                    exit(996)
+                
                 master.release()
             except Exception as _:
                 print("[ERROR]: Process {}-th onnx file failed! which is: {}".format(i, cfg.onnx_file))
