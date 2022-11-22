@@ -385,6 +385,18 @@ def test_tsm_with_rknn(tsm,
                     calibrator.image_filter = calibrator_filter
                 else:
                     logger.warning("image_filter should be set if given dataset path only.")
+        elif dataset is not None:
+            # load dataset if given, for sample test
+            if isinstance(dataset, Calibrator):
+                calibrator = dataset
+            else:
+                calibrator = SampleCalibrator(dataset, limit)
+                if image_filter is not None:
+                    calibrator_filter = SampleImageFilter(image_filter, device=device)
+                    calibrator.image_filter = calibrator_filter
+                else:
+                    logger.warning("image_filter should be set if given dataset path only.")
+
         logger.info("Loading tsm...")
         exporter.load(module=tsm, input_shape=input_shape)
         logger.info("Exporting tsm with rknn...")
