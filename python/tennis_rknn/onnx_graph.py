@@ -223,6 +223,28 @@ def change_reshape_v2_int64(node):
     return onnx_reshape
 
 
+def change_tile_v2_int64(node):
+    # type: (ts.Node) -> Optional[ts.Node]
+    x = node.inputs[0]
+    repeats = node.inputs[1]
+
+    name = node.name
+
+    repeats_int64_value = numpy.asarray(repeats.get("value"), dtype=numpy.int64)
+
+    repeats_node = ts.menu.data(name=name + "_repeats", value=repeats_int64_value)
+
+    onnx_tile = ts.menu.op(name, "onnx::tile", [x, repeats_node])
+
+    if node.has("#dtype"):
+        dtype = node.dtype
+        onnx_tile.dtype = dtype
+
+    onnx_tile.shape = node.shape
+
+    return onnx_tile
+
+
 def fuse_batch_nrom(node):
     # type: (ts.Node) -> Optional[ts.Node]
     batch_scale = node
@@ -842,6 +864,9 @@ def _get_onnx_fence(version=9):
     fence.register(MetaNode(
         "sample2d"
     ), change_sample2onnx)
+    fence.register(MetaNode(
+        "tile_v2"
+    ), change_tile_v2_int64)
     return fence
 
 
@@ -863,6 +888,8 @@ def convert2onnxnode(node, cache=None):
     # type: (ts.Node, Dict[Union[str, ts.Node], onnx.NodeProto]) -> onnx.NodeProto
     if cache is None:
         cache = {}
+    if not node.name:
+        return None
     if node in cache:
         return cache[node]
     op = node.op
@@ -965,7 +992,7 @@ def convert(outputs, inputs, onnx_output, version=None, rename=True):
             layers.extend(nodes)
         else:
             layers.append(nodes)
-    layers = [node for node in layers if node is not None]  # delete no computing input node
+    layers = [node for node in layers if node is not None and node.name]  # delete no computing input node
 
     def make_tensor_value_info(n, default_dtype=None, default_shape=None,
                                force_dtype=None, force_shape=None):
@@ -1014,6 +1041,9 @@ def convert(outputs, inputs, onnx_output, version=None, rename=True):
 
     # onnx_value_infos = [make_tensor_value_info(node) for node in ts_nodes]
     # onnx_value_infos = [i for i in onnx_value_infos if i is not None]
+
+    print("[INFO]: --[== ONNX inputs: {}".format([node.name for node in inputs]))
+    print("[INFO]: --[== ONNX outputs: {}".format([node.name for node in outputs]))
 
     input_infos = [make_tensor_value_info(node, force_dtype=ts.dtype.FLOAT32) for node in inputs]
     output_infos = [make_tensor_value_info(node, force_dtype=ts.dtype.FLOAT32) for node in outputs]
@@ -1210,6 +1240,57 @@ def convert_conv2d(node, cache):
 
 
 register_node_converter("conv2d", convert_conv2d)
+
+
+def convert_transpose_conv2d(node, cache):
+    # type: (ts.Node, Dict[ts.Node, onnx.NodeProto]) -> onnx.NodeProto
+    x = node.inputs[0].name
+    w = node.inputs[1].name
+    b = node.inputs[2].name if len(node.inputs) > 2 else None
+
+    format = str(node.get("format"))
+    assert format == "NCHW"
+
+    W = node.inputs[1].get("value")
+
+    padding = numpy.asarray(node.get("padding")).reshape([-1, 2])[-2:]
+    stride = numpy.asarray(node.get("stride")).reshape([-1])[-2:]
+    dilation = numpy.asarray(node.get("dilation")).reshape([-1])[-2:]
+    kernel_size = W.shape[-2:]
+    input_size = list(node.inputs[0].shape)[-2:]
+
+    if padding[0, 0] != 0 or \
+            padding[0, 1] != 0 or \
+            padding[1, 0] != 0 or \
+            padding[1, 1] != 0:
+        raise ValueError("tranpose conv2d not support padding {}".format(paddding))
+    
+    pad_h = [0, 0]
+    pad_w = [0, 0]
+    
+    # pad_h = conv2d_onnx_padding(input_size[0], padding[0], dilation[0], kernel_size[0], stride[0])
+    # pad_w = conv2d_onnx_padding(input_size[1], padding[1], dilation[1], kernel_size[1], stride[1])
+
+    # if pad_h[0] != padding[0, 0] or pad_w[0] != padding[1, 0]:
+    #    print("[WARNING]: Layer {}:{} change padding [{}, {}] => [{}, {}]".format(
+    #       node.op, node.name, padding[0], padding[1], pad_h, pad_w
+    #    ))
+
+    # padding[0, :] = pad_h
+    # padding[1, :] = pad_w
+
+    inputs = [x, w, b] if b is not None else [x, w]
+
+    onp = onnx.helper.make_node("ConvTranspose", inputs, [node.name], name=node.name,
+                                dilations=[dilation[0], dilation[1]],
+                                kernel_shape=[kernel_size[0], kernel_size[1]],
+                                pads=[pad_h[0], pad_w[0], pad_h[1], pad_w[1]],
+                                strides=[stride[0], stride[1]])
+
+    return onp
+
+
+register_node_converter("transpose_conv2d", convert_transpose_conv2d)
 
 
 def convert_add_bias(node, cache):
@@ -1481,6 +1562,18 @@ def convert_sigmoid(node, cache):
 register_node_converter("sigmoid", convert_sigmoid)
 
 
+def convert_hard_sigmoid(node, cache):
+    # type: (ts.Node, Dict[ts.Node, onnx.NodeProto]) -> onnx.NodeProto
+    x = node.inputs[0].name
+
+    onp = onnx.helper.make_node("HardSigmoid", [x], [node.name], name=node.name)
+
+    return onp
+
+
+register_node_converter("hard_sigmoid", convert_hard_sigmoid)
+
+
 def convert_tanh(node, cache):
     # type: (ts.Node, Dict[ts.Node, onnx.NodeProto]) -> onnx.NodeProto
     x = node.inputs[0].name
@@ -1571,6 +1664,7 @@ def convert_mat_mul(node, cache):
 
 
 register_node_converter("mat_mul", convert_mat_mul)
+register_node_converter("matmul", convert_mat_mul)
 
 
 def convert_concat(node, cache):
@@ -1781,6 +1875,7 @@ def convert_tile_v2(node, cache):
 
 
 register_node_converter("tile_v2", convert_tile_v2)
+register_node_converter("onnx::tile", convert_tile_v2)
 
 
 def convert_gather(node, cache):
@@ -2014,3 +2109,27 @@ def convert_prelu(node, cache):
 
 
 register_node_converter("onnx::prelu", convert_prelu)
+
+
+def convert_lstm(node, cache):
+    # type: (ts.Node, Dict[ts.Node, onnx.NodeProto]) -> onnx.NodeProto
+    x = node.inputs[0].name
+    w = node.inputs[1].name
+    r = node.inputs[2].name
+    b = node.inputs[3].name
+    h = node.inputs[4].name
+    c = node.inputs[5].name
+
+    direction = str(node.get("direction"))
+    hidden_size = int(node.get("hidden_size"))
+    
+    inputs = [x, w, r, b, '', h, c]
+
+    onp = onnx.helper.make_node("LSTM", inputs, [node.name], name=node.name,
+                                direction=direction,
+                                hidden_size=hidden_size)
+
+    return onp
+
+
+register_node_converter("LSTM", convert_lstm)

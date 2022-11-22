@@ -107,6 +107,13 @@ def get_spliter():
     ]))
     gs.support(MetaGraph([
         ts.Node.Const,
+        (MetaNode({
+            "#op": "transpose_conv2d",
+            "#shape": GT([None, 0, 0, 0])
+        }), {1: -1})
+    ]))
+    gs.support(MetaGraph([
+        ts.Node.Const,
         ("add_bias", {1: -1})
     ]))
     gs.support(MetaGraph([
@@ -169,6 +176,7 @@ def get_spliter():
     # gs.support("_dimshuffle")
     gs.support("global_pooling2d")
     gs.support("sigmoid")
+    gs.support("hard_sigmoid")
     gs.support(MetaGraph([
         ts.Node.Const,
         ({"#op": "broadcast"}, {1: -1})
@@ -193,5 +201,11 @@ def get_spliter():
         {"#op": ts.Node.Const, "value": HasShape()},
         ({"#op": "div", "#shape": HasShape(4)}, {1: -1})
     ]))
+    gs.support(MetaGraph([
+        ts.Node.Const,
+        ("tile_v2", {1: -1})
+    ]))
+    gs.support("LSTM")
+    gs.support("matmul")
 
     return gs

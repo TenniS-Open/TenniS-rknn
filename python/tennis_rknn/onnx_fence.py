@@ -399,6 +399,12 @@ def convert_transpose_reshape_flatten(node):
     return None
 
 
+def convert_field_0_copy(node):
+    # type: (ts.Node) -> Optional[ts.Node]
+    x = node.inputs[0]
+    return ts.menu.op(node.name, "_copy", [x])
+
+
 def get_fence():
     # type: () -> Fence
     fence = Fence()
@@ -470,6 +476,10 @@ def get_fence():
     #     {"#op": ts.Node.Const, "value": HasShape()},
     #     ({"#op": "add", "#shape": HasSet}, {1: -1})
     # ]), broadcast_scalar_lhs)
+    fence.register(MetaNode({
+           "#op": "_field",
+           "offset": EQ(0),
+       }), convert_field_0_copy)
 
     return fence
 
